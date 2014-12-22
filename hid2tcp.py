@@ -11,31 +11,15 @@ if os.path.isdir(libsdir) and os.path.isfile(libsdir + '/_hid.so'):
   sys.path.insert(0, libsdir)
 
 # user defined imports
-from hid import *
+import hidwrap
 
 
 def main():
-  hid_set_debug(HID_DEBUG_ALL)
-  hid_set_usb_debug(0)
+    hidwrap.set_debug(hidwrap.HID_DEBUG_ALL)
+    hidwrap.set_usb_debug(0)
 
-  ret = hid_init()
-  if ret != HID_RET_SUCCESS:
-    logging.getLogger().error("hid_init failed ({}): {}".format(ret, hid_strerror(ret)))
+    iface = hidwrap.Interface(vendor_id=0x188A, product_id=0x1101)
 
-  hid = hid_new_HIDInterface()
-  matcher = HIDInterfaceMatcher()
-  matcher.vendor_id = 0x188A
-  matcher.product_id = 0x1101
-
-  ret = hid_force_open(hid, 0, matcher, 3)
-  if ret != HID_RET_SUCCESS:
-    logging.getLogger().error("hid_force_open failed ({}): {}".format(ret, hid_strerror(ret)))
-
-  ret = hid_close(hid)
-  if ret != HID_RET_SUCCESS:
-    logging.getLogger().error("hid_close failed ({}): {}".format(ret, hid_strerror(ret)))
-
-  hid_cleanup()
 
 if __name__ == '__main__':
   main()
