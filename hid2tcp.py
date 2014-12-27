@@ -22,20 +22,25 @@ HID_DEVICE_PATH = [0xffa00001, 0xffa00002, 0xffa10005]
 
 
 def main():
+    logging.getLogger().info("start")
     hidwrap.set_debug(hidwrap.HID_DEBUG_ALL)
     hidwrap.set_usb_debug(0)
 
+    logging.getLogger().info("searching for device")
     hid = hidwrap.Interface(vendor_id=VENDOR_ID, product_id=PRODUCT_ID)
+    logging.getLogger().info("set idle")
     hid.set_idle(32, 0)
 
-    # Send a packet requesting release info: 04 b2 1b 00 00 00
-    frame = bytes([0x04, 0xb2, 0x1b, 0x00, 0x00, 0x00])
+    # Send a packet requesting release info: 04 b2 1b 00
     logging.getLogger().info("send packet")
+    frame = bytes([0x04, 0xb2, 0x1b, 0x00])
     ret = hid.set_output_report(HID_DEVICE_PATH, "".join(map(chr, frame)))
-    
+
     logging.getLogger().info("receive packet")
     in_packet = hid.interrupt_read(ENDPOINT_IN, 1000)
+    logging.getLogger().info("got packet")
 
    
 if __name__ == '__main__':
-  main()
+    logging.basicConfig(level=logging.DEBUG)
+    main()
