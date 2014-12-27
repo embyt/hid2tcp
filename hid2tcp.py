@@ -25,21 +25,7 @@ def pack_request(*arguments):
     return ''.join([chr(c) for c in packet])
 
 
-def get_serial(dev):
-    packet = pack_request(0x04, 0xb2, 0x1b, 0x00)
-    logging.getLogger().info("Sending {}.".format(
-            ''.join(['%d ' % ord(abyte) for abyte in packet])))
-    dev.write(ENDPOINT_OUT, packet, timeout=1000)
-
-    logging.getLogger().info("Reading...")
-    bytes = dev.read(ENDPOINT_IN, EP_SIZE_IN, timeout=1000)
-    logging.getLogger().info("Got data {}.".format(
-            ''.join(['%d ' % abyte for abyte in bytes])))
-
-
 def main():
-    #initialising debuging - don't have a clue if this will work
-    os.environ['PYUSB_LOG_FILENAME'] = 'debug'
     logging.basicConfig(level=logging.DEBUG)
 
     # find device
@@ -55,17 +41,30 @@ def main():
 
     # set the active configuration. With no arguments, the first
     # configuration will be the active one
-    dev.set_configuration()
+    #dev.set_configuration()
 
     logging.getLogger().info("claiming device")
-    usb.util.claim_interface(dev, INTERFACE)
+    #usb.util.claim_interface(dev, INTERFACE)
 
+    # getting device data
+    endpoint_in = dev[0][(0,0)][0]
+    endpoint_out = dev[0][(0,0)][1]
+    EP_SIZE_OUT = endpoint_out.wMaxPacketSize
+    
     # perform communication
-    get_serial(dev)
+    packet = pack_request(0x04, 0xb2, 0x1b, 0x00)
+    logging.getLogger().info("Sending {}.".format(
+            ''.join(['%x ' % ord(abyte) for abyte in packet])))
+    dev.write(endpoint_out.bEndpointAddress, packet, timeout=2000)
+
+    logging.getLogger().info("Reading...")
+    bytes = dev.read(endpoint_in.bEndpointAddress,  endpoint_in.wMaxPacketSize, timeout=2000)
+    logging.getLogger().info("Got data {}.".format(
+            ''.join(['%x ' % abyte for abyte in bytes])))
 
     # done
     logging.getLogger().info("release claimed interface")
-    usb.util.release_interface(dev, interface)
+    #usb.util.release_interface(dev, interface)
 
 
 if __name__ == '__main__':
