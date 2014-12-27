@@ -1,41 +1,73 @@
 #!/usr/bin/env python3
-
-import sys
-import logging
 import os
+import logging
+import time
 
-# add libhid to path
-#libsdir = os.getcwd() + '/.libs'   # allow it to run right out of the build dir
-libsdir = '/usr/local/lib/python3/dist-packages/libhid'
-if os.path.isdir(libsdir) and os.path.isfile(libsdir + '/_hid.so'):
-  sys.path.insert(0, libsdir)
+import usb.core
+import usb.util
 
-# user defined imports
-import hidwrap
-
-VENDOR_ID  = 0x188A
+VENDOR_ID  = 0x188a
 PRODUCT_ID = 0x1101
+INTERFACE = 0
+
 ENDPOINT_IN  = 0x81
 ENDPOINT_OUT = 0x02
+EP_SIZE_OUT = 32
+EP_SIZE_IN = 19
 
-HID_DEVICE_PATH = [0xffa00001, 0xffa00002, 0xffa10005]
+
+def pack_request(*arguments):
+    packet = [0x0] * EP_SIZE_OUT
+    i = 0
+    for arg in arguments:
+        packet[i] = arg
+        i += 1
+    return ''.join([chr(c) for c in packet])
+
+
+def get_serial(dev):
+    packet = pack_request(0x04, 0xb2, 0x1b, 0x00)
+    logging.getLogger().info("Sending {}.".format(
+            ''.join(['%d ' % ord(abyte) for abyte in packet])))
+    dev.write(ENDPOINT_OUT, packet, timeout=1000)
+
+    logging.getLogger().info("Reading...")
+    bytes = dev.read(ENDPOINT_IN, EP_SIZE_IN, timeout=1000)
+    logging.getLogger().info("Got data {}.".format(
+            ''.join(['%d ' % abyte for abyte in bytes])))
 
 
 def main():
-    hidwrap.set_debug(hidwrap.HID_DEBUG_ALL)
-    hidwrap.set_usb_debug(0)
+    #initialising debuging - don't have a clue if this will work
+    os.environ['PYUSB_LOG_FILENAME'] = 'debug'
+    logging.basicConfig(level=logging.DEBUG)
 
-    hid = hidwrap.Interface(vendor_id=VENDOR_ID, product_id=PRODUCT_ID)
-    hid.set_idle(32, 0)
+    # find device
+    dev = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+    if dev is None:
+        raise ValueError('Device not found')
 
-    # Send a packet requesting release info: 04 b2 1b 00 00 00
-    frame = bytes([0x04, 0xb2, 0x1b, 0x00, 0x00, 0x00])
-    logging.getLogger().info("send packet")
-    ret = hid.set_output_report(HID_DEVICE_PATH, "".join(map(chr, frame)))
-    
-    logging.getLogger().info("receive packet")
-    in_packet = hid.interrupt_read(ENDPOINT_IN, 1000)
+    try:
+        dev.detach_kernel_driver(0)
+        logging.getLogger().info("Kernel detach done.")
+    except Exception as e: # this usually mean that kernel driver has already been dettached
+        logging.getLogger().info("Kernel detach not done: {}".format(e))
 
-   
+    # set the active configuration. With no arguments, the first
+    # configuration will be the active one
+    dev.set_configuration()
+
+    logging.getLogger().info("claiming device")
+    usb.util.claim_interface(dev, INTERFACE)
+
+    # perform communication
+    get_serial(dev)
+
+    # done
+    logging.getLogger().info("release claimed interface")
+    usb.util.release_interface(dev, interface)
+
+
 if __name__ == '__main__':
   main()
+
