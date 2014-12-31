@@ -24,5 +24,7 @@ logging.getLogger().info("Requesting {}.".format(url))
 response = urllib.request.urlopen(url)
 
 # dump answer
-print(response.read())
-
+received_base64=response.read()
+received=base64.b64decode(received_base64)
+logging.getLogger().info("Got: {}".format(
+        ''.join(['%02x ' % int(abyte) for abyte in received])))
