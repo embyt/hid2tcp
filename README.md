@@ -1,10 +1,23 @@
 hid2tcp
 =======
 
-hid2tcp provides access to USB HID device using libhid via a TCP port.
+hid2tcp provides access to USB HID device via a TCP port. To access the USB device it uses libusb.
 
-To use this library you need to
-- build and install libhid including its python binding
-  - for this you need SWIG installed during build
-  - some updates and fixes need to be applied to libhid to be able to build
-    it successfully; they are commited into https://github.com/romor/libhid
+
+Installation:
+=============
+To use this library you need to have
+- python3 installed
+- pyusb installed
+- libusb installed (which should be the case on a Linux system)
+
+The code is tested to run on a Rhaspberry Pi using Debian Linux.
+The code is platform independent and should also run on other operating systems.
+On Windows there is the known limitation that message pipes cannot be handled by the select IO multiplexing. Therefore it would need minor adaptation for a windows system.
+
+
+Usage:
+======
+You need to configure hid2tcp to the correct USB vendor and product IDs. You may also want to change the port number of the used TCP socket.
+
+The client needs to send the vendor and product ID as the first 4 bytes after opening the socket. This authenticates the client. Afterwards it may send arbitrary byte sequences which are then forwarded to the USB port. Also it may read from the socket to get all messages received from the USB port.
