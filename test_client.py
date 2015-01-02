@@ -2,22 +2,24 @@
 import logging
 import socket
 import sys
+import configparser
 
 
-VENDOR_ID  = 0x188a
-PRODUCT_ID = 0x1101
-TCP_PORT   = 1711
-
-
-
+# setup logging
 logging.basicConfig(level=logging.DEBUG)
+
+# load config file
+config = configparser.ConfigParser()
+config.read("hid2tcp.conf")
 
 # open connection; create an INET, STREAMing socket
 serversocket = socket.socket()
 # connect to server
-serversocket.connect(('localhost', TCP_PORT))
+serversocket.connect(('localhost', int(config.get('hid2tcp', 'tcp_port'))))
 
 # send authentication
+VENDOR_ID = int(config.get('hid2tcp', 'vendor_id'), 16)
+PRODUCT_ID = int(config.get('hid2tcp', 'product_id'), 16)
 auth_packet = bytes([VENDOR_ID>>8, VENDOR_ID&0xff, PRODUCT_ID>>8, PRODUCT_ID&0xff])
 serversocket.send(auth_packet)
 

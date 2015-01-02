@@ -5,13 +5,11 @@ import queue
 import socket
 import os
 import select
+import configparser
 
 import usb.core
 import usb.util
 
-VENDOR_ID  = 0x188a
-PRODUCT_ID = 0x1101
-TCP_PORT  = 1711
 TIMEOUT    = 10000
 
 
@@ -42,6 +40,13 @@ class UsbReceiver(threading.Thread):
 
 class Hid2Tcp():
     def __init__(self):
+        # load config file
+        config = configparser.ConfigParser()
+        config.read("hid2tcp.conf")
+        self.VENDOR_ID = int(config.get('hid2tcp', 'vendor_id'), 16)
+        self.PRODUCT_ID = int(config.get('hid2tcp', 'product_id'), 16)
+        self.TCP_PORT = int(config.get('hid2tcp', 'tcp_port'))
+        
         # setup USB
         self.init_usb()
         
@@ -50,7 +55,7 @@ class Hid2Tcp():
        
     def init_usb(self):
         # find device
-        self.dev = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+        self.dev = usb.core.find(idVendor=self.VENDOR_ID, idProduct=self.PRODUCT_ID)
         if self.dev is None:
             raise ValueError('Device not found')
 
@@ -84,7 +89,7 @@ class Hid2Tcp():
         # avoid problems with binding if address is not released yet
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)        
         # bind the socket to localhost, only accepting local connections
-        serversocket.bind(('localhost', TCP_PORT))
+        serversocket.bind(('localhost', self.TCP_PORT))
         # become a server socket
         serversocket.listen(5)
         # no active client yet
@@ -159,8 +164,8 @@ class Hid2Tcp():
         else:
             # check authorization
             if len(data) == 4 and \
-               (data[0]<<8)|data[1] == VENDOR_ID and \
-               (data[2]<<8)|data[3] == PRODUCT_ID:
+               (data[0]<<8)|data[1] == self.VENDOR_ID and \
+               (data[2]<<8)|data[3] == self.PRODUCT_ID:
                 # authorization successful
                 logging.getLogger().info("Client authorization succeeded.")
                 self.authorized[i] = True
