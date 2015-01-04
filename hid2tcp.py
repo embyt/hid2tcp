@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import syslog
 import logging
 import threading
 import queue
@@ -13,12 +14,55 @@ import usb.util
 TIMEOUT    = 10000
 
 
-class UsbReceiver(threading.Thread):
-    def __init__(self, usb_endpoint_in, pipeout):
-        threading.Thread.__init__(self) 
+class UsbInterface(threading.Thread):
+    def __init__(self, config, pipeout):
+        self.config = config
         self.pipeout = pipeout
-        self.endpoint_in = usb_endpoint_in
-    
+        self.VENDOR_ID = int(self.config['vendor_id'], 16)
+        self.PRODUCT_ID = int(self.config['product_id'], 16)
+        
+        # setup USB
+        try:
+            self.init_usb()
+        except Exception as e:
+            syslog.syslog('hid2tcp: error initializing USB: ' + str(e))
+            raise
+        
+        # init reader thread
+        threading.Thread.__init__(self) 
+        
+    def init_usb(self):
+        # find device
+        self.dev = usb.core.find(idVendor=self.VENDOR_ID, idProduct=self.PRODUCT_ID)
+        if self.dev is None:
+            raise ValueError('Device not found')
+
+        try:
+            self.dev.detach_kernel_driver(0)
+            logging.getLogger().info("Kernel detach done.")
+        except Exception as e:
+            # this usually mean that there was no other driver active
+            logging.getLogger().debug("Kernel detach not done: {}".format(e))
+
+        # set the active configuration; 
+        # with no arguments, the first configuration will be the active one
+        #self.dev.set_configuration()
+
+        logging.getLogger().info("claiming device")
+        usb.util.claim_interface(self.dev, 0)
+
+        # getting device data
+        usb_cfg = self.dev.get_active_configuration()
+        usb_interface = usb_cfg[(0,0)]
+        self.endpoint_in = usb_interface[0]
+        self.endpoint_out = usb_interface[1]
+
+    def send(self, data):
+        logging.getLogger().info("Sending data: {}".format(
+                ''.join(['%02x ' % abyte for abyte in data])))
+        # send packet
+        self.endpoint_out.write(data)
+        
     def run(self):
         logging.getLogger().info("Starting USB reading.")
         while True:
@@ -43,53 +87,27 @@ class Hid2Tcp():
         # load config file
         config = configparser.ConfigParser()
         config.read("hid2tcp.conf")
-        self.VENDOR_ID = int(config.get('hid2tcp', 'vendor_id'), 16)
-        self.PRODUCT_ID = int(config.get('hid2tcp', 'product_id'), 16)
-        self.TCP_PORT = int(config.get('hid2tcp', 'tcp_port'))
-        
-        # setup USB
-        self.init_usb()
+        self.config = config['hid2tcp']
         
         # setup data queue
-        self.pipein, self.pipeout = os.pipe()
-       
-    def init_usb(self):
-        # find device
-        self.dev = usb.core.find(idVendor=self.VENDOR_ID, idProduct=self.PRODUCT_ID)
-        if self.dev is None:
-            raise ValueError('Device not found')
+        self.pipein, pipeout = os.pipe()
+        
+        # setup USB
+        self.usb_interface = UsbInterface(self.config, pipeout)
+        
+        syslog.syslog('hid2tcp: initialized successfully')
 
-        try:
-            self.dev.detach_kernel_driver(0)
-            logging.getLogger().info("Kernel detach done.")
-        except Exception as e:
-            # this usually mean that there was no other driver active
-            logging.getLogger().debug("Kernel detach not done: {}".format(e))
-
-        # set the active configuration; 
-        # with no arguments, the first configuration will be the active one
-        #self.dev.set_configuration()
-
-        logging.getLogger().info("claiming device")
-        #usb.util.claim_interface(dev, INTERFACE)
-
-        # getting device data
-        usb_cfg = self.dev.get_active_configuration()
-        usb_interface = usb_cfg[(0,0)]
-        self.endpoint_in = usb_interface[0]
-        self.endpoint_out = usb_interface[1]
-    
+        
     def run(self): 
         # start USB receiver thread
-        self.usb_receiver = UsbReceiver(self.endpoint_in, self.pipeout)
-        self.usb_receiver.start()
+        self.usb_interface.start()
         
         # create an INET, STREAMing socket
         serversocket = socket.socket()
         # avoid problems with binding if address is not released yet
         serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)        
         # bind the socket to localhost, only accepting local connections
-        serversocket.bind(('localhost', self.TCP_PORT))
+        serversocket.bind(('localhost', int(self.config['tcp_port'])))
         # become a server socket
         serversocket.listen(5)
         # no active client yet
@@ -160,12 +178,12 @@ class Hid2Tcp():
         if self.authorized[i]:
             # got hid data
             logging.getLogger().info("Got data to transmit.")
-            self.usb_send(data)
+            self.usb_interface.send(data)
         else:
             # check authorization
             if len(data) == 4 and \
-               (data[0]<<8)|data[1] == self.VENDOR_ID and \
-               (data[2]<<8)|data[3] == self.PRODUCT_ID:
+               (data[0]<<8)|data[1] == int(self.config['vendor_id'], 16) and \
+               (data[2]<<8)|data[3] == int(self.config['product_id'], 16):
                 # authorization successful
                 logging.getLogger().info("Client authorization succeeded.")
                 self.authorized[i] = True
@@ -178,17 +196,10 @@ class Hid2Tcp():
                 return False
 
         return True
-                            
-            
-    def usb_send(self, data):
-        logging.getLogger().info("Sending data: {}".format(
-                ''.join(['%02x ' % abyte for abyte in data])))
-        # send packet
-        self.endpoint_out.write(data)
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    #logging.basicConfig(level=logging.INFO)
     hid2tcp = Hid2Tcp()
     hid2tcp.run()
     
