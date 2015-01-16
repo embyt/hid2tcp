@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import syslog
-import logging
 import threading
 import queue
 import socket
 import os
 import select
 import configparser
+import pep3143daemon
+import sys
 
 import usb.core
 import usb.util
@@ -22,33 +23,33 @@ class UsbInterface(threading.Thread):
         self.PRODUCT_ID = int(self.config['product_id'], 16)
         
         # setup USB
-        try:
-            self.init_usb()
-        except Exception as e:
-            syslog.syslog('hid2tcp: error initializing USB: ' + str(e))
-            raise
+        self.init_usb()
         
         # init reader thread
         threading.Thread.__init__(self) 
         
     def init_usb(self):
         # find device
+        syslog.syslog('hid2tcp: Looking up USB device')
         self.dev = usb.core.find(idVendor=self.VENDOR_ID, idProduct=self.PRODUCT_ID)
         if self.dev is None:
+            syslog.syslog('hid2tcp: USB device not found')
             raise ValueError('Device not found')
+        syslog.syslog('hid2tcp: USB device found')
 
         try:
             self.dev.detach_kernel_driver(0)
-            logging.getLogger().info("Kernel detach done.")
+            syslog.syslog('hid2tcp: Kernel detach done.')
         except Exception as e:
             # this usually mean that there was no other driver active
-            logging.getLogger().debug("Kernel detach not done: {}".format(e))
+            #syslog.syslog('hid2tcp: Kernel detach not done: {}'.format(e))
+            pass
 
         # set the active configuration; 
         # with no arguments, the first configuration will be the active one
         #self.dev.set_configuration()
 
-        logging.getLogger().info("claiming device")
+        syslog.syslog('hid2tcp: Claiming USB device')
         usb.util.claim_interface(self.dev, 0)
 
         # getting device data
@@ -58,23 +59,23 @@ class UsbInterface(threading.Thread):
         self.endpoint_out = usb_interface[1]
 
     def send(self, data):
-        logging.getLogger().info("Sending data: {}".format(
+        syslog.syslog('hid2tcp: Sending data: {}'.format(
                 ''.join(['%02x ' % abyte for abyte in data])))
         # send packet
         self.endpoint_out.write(data)
         
     def run(self):
-        logging.getLogger().info("Starting USB reading.")
+        syslog.syslog('hid2tcp: Starting USB reading.')
         while True:
             try:
                 packet = self.endpoint_in.read(self.endpoint_in.wMaxPacketSize, timeout=TIMEOUT)
             except Exception as e:
                 # most probably this is a read timeout
-                logging.getLogger().debug("Could not read data: {}".format(e))
+                #syslog.syslog("Could not read data: {}".format(e))
                 continue
 
             # got data
-            logging.getLogger().info("Got data {}.".format(
+            syslog.syslog('hid2tcp: Got data: {}'.format(
                     ''.join(['%02x ' % abyte for abyte in packet])))
             # write data length
             os.write(self.pipeout, bytes([len(packet)]))
@@ -83,11 +84,8 @@ class UsbInterface(threading.Thread):
 
 
 class Hid2Tcp():
-    def __init__(self):
-        # load config file
-        config = configparser.ConfigParser()
-        config.read("hid2tcp.conf")
-        self.config = config['hid2tcp']
+    def __init__(self, config):
+        self.config = config
         
         # setup data queue
         self.pipein, pipeout = os.pipe()
@@ -95,40 +93,44 @@ class Hid2Tcp():
         # setup USB
         self.usb_interface = UsbInterface(self.config, pipeout)
         
-        syslog.syslog('hid2tcp: initialized successfully')
+        # setup TCP socket
+        self.init_socket()
+        # no active client yet
+        self.clients = []
+        self.authorized = []
+        
+        
+    def init_socket(self):
+        syslog.syslog('hid2tcp: Open server socket.')
+        # create an INET, STREAMing socket
+        self.serversocket = socket.socket()
+        # avoid problems with binding if address is not released yet
+        self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)        
+        # bind the socket to localhost, only accepting local connections
+        self.serversocket.bind(('localhost', int(self.config['tcp_port'])))
+        # become a server socket
+        self.serversocket.listen(5)
 
         
     def run(self): 
         # start USB receiver thread
         self.usb_interface.start()
-        
-        # create an INET, STREAMing socket
-        serversocket = socket.socket()
-        # avoid problems with binding if address is not released yet
-        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)        
-        # bind the socket to localhost, only accepting local connections
-        serversocket.bind(('localhost', int(self.config['tcp_port'])))
-        # become a server socket
-        serversocket.listen(5)
-        # no active client yet
-        self.clients = []
-        self.authorized = []
 
         # main loop
         while True:
             # setup IO multiplexing structures
-            readers = [self.pipein, serversocket]
+            readers = [self.pipein, self.serversocket]
             readers += self.clients
             
             # blocking wait for new data
-            logging.getLogger().debug("Waiting for data or connection.")
+            #syslog.syslog('hid2tcp: Waiting for data or connection.')
             ready_to_read, ready_to_write, in_error = select.select(readers, [], [], TIMEOUT/1000)
             
             # check for new socket connection
-            if serversocket in ready_to_read:
+            if self.serversocket in ready_to_read:
                 # accept connection
-                logging.getLogger().info("New connection detected.")
-                (clientsocket, address) = serversocket.accept()
+                syslog.syslog('hid2tcp: New connection detected.')
+                (clientsocket, address) = self.serversocket.accept()
                 self.clients.append(clientsocket)
                 self.authorized.append(False)
             
@@ -156,7 +158,7 @@ class Hid2Tcp():
         data_size = data_size[0]
         # blocking read of data
         data = os.read(self.pipein, data_size)
-        logging.getLogger().info("Transfering USB data ({} bytes).".format(data_size))
+        #syslog.syslog('hid2tcp: Transfering USB data ({} bytes).'.format(data_size))
         
         # send data to all authorized clients
         for i in range(len(self.clients)):
@@ -170,14 +172,14 @@ class Hid2Tcp():
         # get data
         data = client.recv(4096)
         if len(data) == 0:
-            logging.getLogger().info("Client left.")
+            syslog.syslog('hid2tcp: Client left.')
             # client closed connection
             return False
 
         # is this authorization data or hid data?
         if self.authorized[i]:
             # got hid data
-            logging.getLogger().info("Got data to transmit.")
+            #syslog.syslog('hid2tcp: Got data to transmit.')
             self.usb_interface.send(data)
         else:
             # check authorization
@@ -185,13 +187,13 @@ class Hid2Tcp():
                (data[0]<<8)|data[1] == int(self.config['vendor_id'], 16) and \
                (data[2]<<8)|data[3] == int(self.config['product_id'], 16):
                 # authorization successful
-                logging.getLogger().info("Client authorization succeeded.")
+                syslog.syslog('hid2tcp: Client authorization succeeded.')
                 self.authorized[i] = True
                 # echo data back to commit authentication
                 client.send(data)
             else:
                 # authorization failed
-                logging.getLogger().info("Client authorization failed.")
+                syslog.syslog('hid2tcp: Client authorization failed.')
                 client.close()
                 return False
 
@@ -199,8 +201,25 @@ class Hid2Tcp():
 
 
 def main():
-    #logging.basicConfig(level=logging.INFO)
-    hid2tcp = Hid2Tcp()
+    # load config file
+    config = configparser.ConfigParser()
+    config.read("hid2tcp.conf")
+    
+    # daemonize
+    pidfile = pep3143daemon.PidFile(config['hid2tcp']['pid_file'])
+    daemon=pep3143daemon.DaemonContext(pidfile=pidfile)
+    daemon.open()
+    
+    # setup hid class
+    try:
+        hid2tcp = Hid2Tcp(config['hid2tcp'])
+    except Exception as e:
+        syslog.syslog('hid2tcp: error initializing: ' + str(e))
+        daemon.terminate()
+        sys.exit()
+    
+    # run bridge
+    syslog.syslog('hid2tcp: Initialized successfully')
     hid2tcp.run()
     
 if __name__ == '__main__':

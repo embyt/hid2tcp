@@ -6,7 +6,7 @@ import configparser
 
 
 # setup logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(message)s')
 
 # load config file
 config = configparser.ConfigParser()
@@ -37,6 +37,10 @@ logging.getLogger().info("Sending {}.".format(
 serversocket.send(packet)
 
 # dump answer
-received=serversocket.recv(4096)
-logging.getLogger().info("Got: {}".format(
-        ''.join(['%02x ' % int(abyte) for abyte in received])))
+while True:
+    received=serversocket.recv(4096)
+    if len(received) == 0:
+        logging.getLogger().info("Server socket closed. Exiting.")
+        sys.exit()
+    logging.getLogger().info("Got: {}".format(
+            ''.join(['%02x ' % int(abyte) for abyte in received])))
