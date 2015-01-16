@@ -203,7 +203,8 @@ class Hid2Tcp():
 def main():
     # load config file
     config = configparser.ConfigParser()
-    config.read("hid2tcp.conf")
+    config_file = os.path.splitext(os.path.realpath(__file__))[0]+".conf"
+    config.read(config_file)
     
     # daemonize
     pidfile = pep3143daemon.PidFile(config['hid2tcp']['pid_file'])
