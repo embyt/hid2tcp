@@ -6,10 +6,23 @@ hid2tcp provides access to USB HID device via a TCP port. To access the USB devi
 
 Installation:
 =============
+
+- clone this repository to a convenient place
+- as root, run
+  python3 setup.py develop
+- copy or link the config file to /etc/hid2tcp.conf
+- copy or link the system-v init file init.d to /etc/init.d/hid2tcp
+- install the service using update-rc.d enable /etc/init.d/hid2tcp
+
+
+Dependencies:
+=============
+
 To use this library you need to have
 - python3 installed
-- pyusb installed
 - libusb installed (which should be the case on a Linux system)
+
+There are some python library dependencies which get automatically installed when you run setup.py.
 
 The code is tested to run on a Rhaspberry Pi using Debian Linux.
 The code is platform independent and should also run on other operating systems.
