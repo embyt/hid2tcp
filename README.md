@@ -8,8 +8,7 @@ Installation:
 =============
 
 - clone this repository to a convenient place
-- as root, run
-  python3 setup.py develop
+- sudo python3 setup.py develop
 - copy or link the config file to /etc/hid2tcp.conf
 - copy or link the system-v init file init.d to /etc/init.d/hid2tcp
 - install the service using update-rc.d enable /etc/init.d/hid2tcp
@@ -24,7 +23,7 @@ To use this library you need to have
 
 There are some python library dependencies which get automatically installed when you run setup.py.
 
-The code is tested to run on a Rhaspberry Pi using Debian Linux.
+The code is tested to run on a Raspberry Pi using Debian Linux.
 The code is platform independent and should also run on other operating systems.
 On Windows there is the known limitation that message pipes cannot be handled by the select IO multiplexing. Therefore it would need minor adaptation for a windows system.
 
