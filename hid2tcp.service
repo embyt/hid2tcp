@@ -1,0 +1,13 @@
+[Unit]
+Description=hid2tcp bridge
+OnFailure=unit-status-mail@%n.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hid2tcp
+Restart=always
+RestartSec=300
+User=root
+
+[Install]
+WantedBy=multi-user.target
