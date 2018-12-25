@@ -1,6 +1,5 @@
 [Unit]
 Description=hid2tcp bridge
-OnFailure=unit-status-mail@%n.service
 
 [Service]
 Type=simple

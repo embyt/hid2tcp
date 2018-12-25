@@ -10,8 +10,11 @@ Installation:
 - clone this repository to a convenient place
 - sudo python3 setup.py develop
 - copy or link the config file to /etc/hid2tcp.conf
-- copy or link the system-v init file init.d to /etc/init.d/hid2tcp
-- install the service using update-rc.d enable /etc/init.d/hid2tcp
+
+setup systemd service:
+- copy hid2tcp.service to /etc/systemd/system
+- systemctl enable hid2tcp
+- systemctl start hid2tcp
 
 
 Dependencies:

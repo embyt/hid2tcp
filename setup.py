@@ -6,7 +6,6 @@ from setuptools import setup, find_packages
 # needed packages
 REQUIRES = [
     'pyusb',
-    'pep3143daemon',
 ]
 
 setup(
